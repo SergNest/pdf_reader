@@ -18,28 +18,14 @@ def extract_text_from_pdf(pdf_file: str) -> list[str]:
         return pdf_text
 
 
-def main():
-    doc = Document()
-    # extracted_text: list[str] = extract_text_from_pdf('document (3).pdf')
-    images = convert_from_path('WW1.pdf')
-
-    # Проходимо по кожному зображенню і застосовуємо Tesseract для розпізнавання тексту
-    for i, image in enumerate(images):
-        text = pytesseract.image_to_string(image)
-        # print(f"Текст на сторінці {i + 1}:\n{text}\n")
-
-        doc.add_paragraph(text)
-
-    doc.save("example.docx")
-
-
 # Основна функція для перетворення PDF в DOCX з OCR
 def convert_pdf_to_docx(pdf_path, output_filename):
     doc = Document()
     images = convert_from_path(pdf_path)
+    custom_oem_psm_config = r'--oem 3 --psm 6'
 
     for i, image in enumerate(images):
-        text = pytesseract.image_to_string(image)
+        text = pytesseract.image_to_string(image, config=custom_oem_psm_config)
         doc.add_paragraph(text)
 
     output_path = os.path.join(CONVERTED_FOLDER, output_filename)
