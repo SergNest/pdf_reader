@@ -96,7 +96,7 @@ def get_last_converted_files():
 if __name__ == '__main__':
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     os.makedirs(CONVERTED_FOLDER, exist_ok=True)
-    app.run(debug=True)
+    app.run(debug=True, port=5005, host='0.0.0.0')
 
 
 
