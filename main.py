@@ -1,4 +1,5 @@
 import os
+from typing import re
 
 from flask import Flask, request, render_template, send_file, redirect, url_for
 from PyPDF2 import PdfReader
@@ -26,6 +27,7 @@ def convert_pdf_to_docx(pdf_path, output_filename):
 
     for i, image in enumerate(images):
         text = pytesseract.image_to_string(image, config=custom_oem_psm_config)
+        text = re.sub(r'[^\x09\x0A\x0D\x20-\x7E\xA0-\uD7FF\uE000-\uFFFD]', '', text)
         doc.add_paragraph(text)
 
     output_path = os.path.join(CONVERTED_FOLDER, output_filename)
