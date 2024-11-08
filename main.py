@@ -1,5 +1,5 @@
 import os
-from typing import re
+import re
 
 from flask import Flask, request, render_template, send_file, redirect, url_for
 from PyPDF2 import PdfReader
