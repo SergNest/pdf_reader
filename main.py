@@ -6,19 +6,21 @@ from PyPDF2 import PdfReader
 from docx import Document
 import pytesseract
 from pdf2image import convert_from_path
+from dotenv import load_dotenv
 
 app = Flask(__name__)
 UPLOAD_FOLDER = "uploads"
 CONVERTED_FOLDER = "converted_files"
 
 
-ALLOWED_IP = ["20.50.0.152", "65.109.159.113"]
+allowed_ips = os.getenv('MY_LIST', '').split(',')
+allowed_ips = [ip.strip() for ip in allowed_ips if ip.strip()]
 
 
 @app.before_request
 def limit_remote_addr():
     print(request.remote_addr)
-    if request.remote_addr not in ALLOWED_IP:
+    if request.remote_addr not in allowed_ips:
         abort(403)  # Доступ заборонено
 
 
