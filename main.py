@@ -1,7 +1,7 @@
 import os
 import re
 
-from flask import Flask, request, render_template, send_file, redirect, url_for
+from flask import Flask, request, render_template, send_file, redirect, url_for, abort
 from PyPDF2 import PdfReader
 from docx import Document
 import pytesseract
@@ -10,6 +10,16 @@ from pdf2image import convert_from_path
 app = Flask(__name__)
 UPLOAD_FOLDER = "uploads"
 CONVERTED_FOLDER = "converted_files"
+
+
+ALLOWED_IP = ["20.50.0.152", "65.109.159.113"]
+
+
+@app.before_request
+def limit_remote_addr():
+    print(request.remote_addr)
+    if request.remote_addr not in ALLOWED_IP:
+        abort(403)  # Доступ заборонено
 
 
 def extract_text_from_pdf(pdf_file: str) -> list[str]:
