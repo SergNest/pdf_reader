@@ -114,14 +114,14 @@ def index():
 # Завантаження конвертованого файлу
 @app.route("/download/<filename>")
 def download_file(filename):
-    path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    path = os.path.join(app.config['CONVERTED_FOLDER'], filename)
     return send_file(path, as_attachment=True)
 
 
 # Отримуємо останні 5 конвертованих файлів
 def get_last_converted_files():
     files = sorted(
-        [(f, os.path.getmtime(os.path.join(app.config['UPLOAD_FOLDER'], f))) for f in os.listdir(app.config['UPLOAD_FOLDER'])],
+        [(f, os.path.getmtime(os.path.join(app.config['CONVERTED_FOLDER'], f))) for f in os.listdir(app.config['CONVERTED_FOLDER'])],
         key=lambda x: x[1], reverse=True
     )
     return [f[0] for f in files[:5]]
