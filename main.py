@@ -122,7 +122,7 @@ def download_file(filename):
 def get_last_converted_files():
     files = sorted(
         [(f, os.path.getmtime(os.path.join(app.config['CONVERTED_FOLDER'], f))) for f in os.listdir(app.config['CONVERTED_FOLDER'])],
-        key=lambda x: x[1], reverse=True
+        key=lambda x: x[1]
     )
     return [f[0] for f in files[:5]]
 
