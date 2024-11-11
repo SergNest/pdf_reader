@@ -120,11 +120,25 @@ def download_file(filename):
 
 # Отримуємо останні 5 конвертованих файлів
 def get_last_converted_files():
-    files = sorted(
-        [(f, os.path.getmtime(os.path.join(app.config['CONVERTED_FOLDER'], f))) for f in os.listdir(app.config['CONVERTED_FOLDER'])],
-        key=lambda x: x[1]
-    )
-    return [f[0] for f in files[:5]]
+    # Перевірка наявності файлів у каталозі, використовуючи app.config['CONVERTED_FOLDER']
+    converted_folder = app.config['CONVERTED_FOLDER']
+
+    # Якщо папка не існує, повертаємо порожній список
+    if not os.path.exists(converted_folder):
+        return []
+
+    # Отримуємо всі файли та їх час модифікації
+    files_with_time = [
+        (f, os.path.getmtime(os.path.join(converted_folder, f)))
+        for f in os.listdir(converted_folder)
+        if os.path.isfile(os.path.join(converted_folder, f))  # Переконатись, що це файли
+    ]
+
+    # Сортуємо файли за часом модифікації, від найновіших
+    files_sorted = sorted(files_with_time, key=lambda x: x[1], reverse=True)
+
+    # Повертаємо список останніх 5 файлів
+    return [f[0] for f in files_sorted[:5]]
 
 
 if __name__ == '__main__':
