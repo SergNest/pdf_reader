@@ -11,6 +11,9 @@ from pdf2image import convert_from_path
 from dotenv import load_dotenv
 from PIL import Image
 
+import openai
+from openai import OpenAI
+
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = os.getenv("UPLOAD_FOLDER", "uploads")
 app.config['CONVERTED_FOLDER'] = os.getenv("CONVERTED_FOLDER", "converted_files")
@@ -18,6 +21,10 @@ app.config['CONVERTED_FOLDER'] = os.getenv("CONVERTED_FOLDER", "converted_files"
 allowed_ips = [ip.strip() for ip in os.getenv('MY_LIST', '').split(',') if ip.strip()]
 ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg'}
 
+client = OpenAI(
+    # This is the default and can be omitted
+    api_key=os.getenv("YOUR_API_KEY", "api_key"),
+)
 
 # Перевірка розширення файлу
 def allowed_file(filename):
@@ -38,41 +45,35 @@ def extract_text_from_pdf(pdf_file: str) -> list[str]:
         return pdf_text
 
 
-# # Основна функція для перетворення PDF в DOCX з OCR
-# def convert_pdf_to_docx(pdf_path, output_filename):
-#     doc = Document()
-#     images = convert_from_path(pdf_path)
-#     custom_oem_psm_config = r'--oem 3 --psm 6'
-#
-#     for i, image in enumerate(images):
-#         text = pytesseract.image_to_string(image, config=custom_oem_psm_config)
-#         text = re.sub(r'[^\x09\x0A\x0D\x20-\x7E\xA0-\uD7FF\uE000-\uFFFD]', '', text)
-#         doc.add_paragraph(text)
-#
-#     output_path = os.path.join(CONVERTED_FOLDER, output_filename)
-#     doc.save(output_path)
-#     return output_path
-
-
 # Функція для конвертації PDF або зображення у DOCX
-def convert_to_docx(file_path, output_filename):
+def convert_to_docx(file_path, output_filename, use_ai=False):
+    """
+    Конвертує PDF або зображення в DOCX, опціонально використовуючи AI для корекції тексту.
+
+    Args:
+        file_path: Шлях до вхідного файлу.
+        output_filename: Назва вихідного DOCX файлу.
+        use_ai: Флаг, що вказує, чи використовувати AI для корекції тексту.
+    """
     doc = Document()
     _, ext = os.path.splitext(file_path)
     custom_oem_psm_config = r'--oem 3 --psm 6'
 
-    # Обробка PDF
     if ext.lower() == '.pdf':
         images = convert_from_path(file_path)
         for i, image in enumerate(images):
             text = pytesseract.image_to_string(image, config=custom_oem_psm_config)
             text = re.sub(r'[^\x09\x0A\x0D\x20-\x7E\xA0-\uD7FF\uE000-\uFFFD]', '', text)
+            if use_ai:
+                text = correct_text_with_ai(text)
             doc.add_paragraph(text)
 
-    # Обробка зображень
     elif ext.lower() in {'.png', '.jpg', '.jpeg'}:
         image = Image.open(file_path)
         text = pytesseract.image_to_string(image)
         text = re.sub(r'[^\x09\x0A\x0D\x20-\x7E\xA0-\uD7FF\uE000-\uFFFD]', '', text)
+        if use_ai:
+            text = correct_text_with_ai(text)
         doc.add_paragraph(text)
 
     output_path = str(os.path.join(app.config['CONVERTED_FOLDER'], output_filename))
@@ -80,7 +81,6 @@ def convert_to_docx(file_path, output_filename):
     return output_path
 
 
-# Головна сторінка для завантаження PDF і перегляду останніх конвертованих файлів
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == 'POST':
@@ -98,19 +98,16 @@ def index():
             file.save(file_path)
 
             output_filename = f"{os.path.splitext(filename)[0]}.docx"
-            output_path = convert_to_docx(file_path, output_filename)
+            use_ai = request.form.get('use_ai') == 'on'  # Отримання значення checkbox
+            output_path = convert_to_docx(file_path, output_filename, use_ai=use_ai)  # Передача use_ai
 
             # Відображення списку останніх конвертованих файлів
-            converted_files = sorted(os.listdir(app.config['CONVERTED_FOLDER']), reverse=True)[:5]
+            converted_files = get_last_converted_files()
             return render_template('index.html', converted_files=converted_files)
 
-    # converted_files = sorted(os.listdir(app.config['CONVERTED_FOLDER']), reverse=True)[:5]
-    # return render_template('index.html', converted_files=converted_files)
-
-    # функція для отримання останніх файлів
+    # Якщо метод GET, або якщо файл не було завантажено
     converted_files = get_last_converted_files()
     return render_template('index.html', converted_files=converted_files)
-
 
 # Завантаження конвертованого файлу
 @app.route("/download/<filename>")
@@ -150,6 +147,23 @@ def get_last_converted_files(converted_folder: str = app.config['CONVERTED_FOLDE
 
     # Повертаємо список останніх файлів
     return [f[0] for f in files_with_time[:num_files]]
+
+
+def correct_text_with_ai(text):
+    """Коригує текст за допомогою OpenAI API."""
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",  # Модель, яку хочете використовувати
+            messages=[
+                {"role": "system", "content": "Ви - помічник, який коригує текст."},
+                {"role": "user", "content": f"Correct the following text:\n\n{text}"}
+            ],
+            max_tokens=100
+        )
+        return response.choices[0].message.content.strip()  # Правильний доступ до content
+    except openai.APIConnectionError as e:
+        print(f"Помилка OpenAI API: {e}")
+        return text  # Повертаємо оригінальний текст у разі помилки
 
 
 if __name__ == '__main__':
