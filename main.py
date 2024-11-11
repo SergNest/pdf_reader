@@ -71,6 +71,7 @@ def convert_to_docx(file_path, output_filename):
     elif ext.lower() in {'.png', '.jpg', '.jpeg'}:
         image = Image.open(file_path)
         text = pytesseract.image_to_string(image)
+        text = re.sub(r'[^\x09\x0A\x0D\x20-\x7E\xA0-\uD7FF\uE000-\uFFFD]', '', text)
         doc.add_paragraph(text)
 
     output_path = str(os.path.join(app.config['CONVERTED_FOLDER'], output_filename))
