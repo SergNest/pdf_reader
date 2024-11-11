@@ -1,5 +1,6 @@
 import os
 import re
+from typing import List, Tuple
 
 from flask import Flask, request, render_template, send_file, redirect, url_for, abort
 from werkzeug.utils import secure_filename
@@ -118,27 +119,37 @@ def download_file(filename):
     return send_file(path, as_attachment=True)
 
 
-# Отримуємо останні 5 конвертованих файлів
-def get_last_converted_files():
-    # Перевірка наявності файлів у каталозі, використовуючи app.config['CONVERTED_FOLDER']
-    converted_folder = app.config['CONVERTED_FOLDER']
+def get_last_converted_files(converted_folder: str = app.config['CONVERTED_FOLDER'], num_files: int = 5) -> List[str]:
+    """
+    Повертає список останніх конвертованих файлів у заданій папці.
 
-    # Якщо папка не існує, повертаємо порожній список
+    Args:
+        converted_folder: Шлях до папки з конвертованими файлами.
+        num_files: Кількість останніх файлів для повернення (за замовчуванням 5).
+
+    Returns:
+        Список шляхів до останніх конвертованих файлів, відсортованих за часом модифікації.
+        Повертає порожній список, якщо папка не існує або немає файлів.
+    """
+
     if not os.path.exists(converted_folder):
         return []
 
-    # Отримуємо всі файли та їх час модифікації
-    files_with_time = [
-        (f, os.path.getmtime(os.path.join(converted_folder, f)))
-        for f in os.listdir(converted_folder)
-        if os.path.isfile(os.path.join(converted_folder, f))  # Переконатись, що це файли
-    ]
+    files_with_time: List[Tuple[str, float]] = []
+    for entry in os.scandir(converted_folder):  # Використовуємо os.scandir для кращої продуктивності
+        if entry.is_file():
+            try:
+                mtime = entry.stat().st_mtime
+                files_with_time.append((entry.name, mtime))
+            except OSError as e:
+                print(f"Помилка при отриманні часу модифікації для файлу {entry.path}: {e}")
+                continue  # Пропускаємо файл, якщо виникла помилка
 
-    # Сортуємо файли за часом модифікації, від найновіших
-    files_sorted = sorted(files_with_time, key=lambda x: x[1], reverse=True)
+    # Сортуємо за часом модифікації, від найновіших до найстаріших
+    files_with_time.sort(key=lambda x: x[1], reverse=True)
 
-    # Повертаємо список останніх 5 файлів
-    return [f[0] for f in files_sorted[:5]]
+    # Повертаємо список останніх файлів
+    return [f[0] for f in files_with_time[:num_files]]
 
 
 if __name__ == '__main__':
