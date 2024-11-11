@@ -3,22 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF to DOCX Converter</title>
+    <title>PDF/Image to DOCX Converter</title>
 </head>
 <body>
-    <h1>PDF to DOCX Converter</h1>
+    <h1>PDF/Image to DOCX Converter</h1>
 
     <form action="/" method="post" enctype="multipart/form-data">
-        <label for="pdf_file">Select PDF file:</label>
-        <input type="file" name="pdf_file" id="pdf_file" accept=".pdf" required>
+        <label for="pdf_file">Select file:</label>
+        <input type="file" name="file" id="pdf_file" accept=".pdf, .png, .jpg, .jpeg" required>
         <button type="submit">Convert to DOCX</button>
     </form>
 
     <h2>Last 5 Converted Files</h2>
     <ul>
-        {% for file in last_files %}
-            <li><a href="{{ url_for('download_file', filename=file) }}">{{ file }}</a></li>
-        {% endfor %}
+        {% if converted_files %}
+            {% for file in converted_files %}
+                <li><a href="{{ url_for('download_file', filename=file) }}">{{ file }}</a></li>
+            {% endfor %}
+        {% else %}
+            <p>No converted files available.</p>
+        {% endif %}
     </ul>
 </body>
 </html>
