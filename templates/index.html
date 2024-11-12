@@ -8,44 +8,48 @@
 </head>
 <body class="bg-gray-100 font-sans">
 
-    <div class="container mx-auto px-4 py-8">
-        <h1 class="text-3xl font-bold mb-4 text-center">Image/PDF to DOCX Converter</h1>
+     <div class="container mx-auto px-4 py-8">
+        <div class="flex flex-col md:flex-row justify-between">
+            <div class="md:w-1/2">
+                <h1 class="text-3xl font-bold mb-4">Image/PDF to DOCX Converter</h1>
 
-        <form id="convert_form" action="/" method="post" enctype="multipart/form-data" class="max-w-md mx-auto bg-white p-6 rounded-lg shadow-md">
-            <div>
-                <label for="pdf_file" class="block text-gray-700 font-medium mb-2">Select file:</label>
-                <input type="file" name="file" id="pdf_file" accept=".pdf, .png, .jpg, .jpeg" class="border border-gray-300 rounded-md py-2 px-3 w-full focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <form id="convert_form" action="/" method="post" enctype="multipart/form-data" class="bg-white p-6 rounded-lg shadow-md">
+                    <div>
+                        <label for="pdf_file" class="block text-gray-700 font-medium mb-2">Select file:</label>
+                        <input type="file" name="file" id="pdf_file" accept=".pdf, .png, .jpg, .jpeg" class="border border-gray-300 rounded-md py-2 px-3 w-full focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+
+                    <div class="mt-4">
+                        <label for="paste_area" class="block text-gray-700 font-medium mt-4 mb-2">Or paste screenshot:</label>
+                        <div id="paste_area" class="border border-gray-300 rounded-md py-2 px-3 w-full h-32 bg-gray-50 flex items-center justify-center text-gray-500" style="background-size: contain; background-repeat: no-repeat; background-position: center;">
+                            Click here and paste your screenshot
+                        </div>
+                        <input type="hidden" name="pasted_image" id="pasted_image">
+                    </div>
+
+                    <div class="mt-4">
+                        <input type="checkbox" name="use_ai" id="use_ai" class="rounded text-blue-500 focus:ring-2 focus:ring-blue-500">
+                        <label for="use_ai" class="text-gray-700 ml-2">Use AI for text correction</label>
+                    </div>
+
+                    <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mt-4 w-full">Convert to DOCX</button>
+                </form>
             </div>
 
-            <div class="mt-4">
-                <label for="paste_area" class="block text-gray-700 font-medium mt-4 mb-2">Or paste screenshot:</label>
-                <div id="paste_area" class="border border-gray-300 rounded-md py-2 px-3 w-full h-32 bg-gray-50 flex items-center justify-center text-gray-500"
-                    style="background-size: contain; background-repeat: no-repeat; background-position: center;">
-                    Click here and paste your screenshot
-                </div>
-                <input type="hidden" name="pasted_image" id="pasted_image">
+            <div class="md:w-1/2 md:ml-4 mt-8 md:mt-0">
+                <h2 class="text-2xl font-bold mb-4">Last 5 Converted Files</h2>
+                <ul class="bg-white p-4 rounded-lg shadow-md">
+                    {% if converted_files %}
+                        {% for file in converted_files %}
+                            <li class="mb-2">
+                                <a href="{{ url_for('download_file', filename=file) }}" class="text-blue-500 hover:underline">{{ file }}</a>
+                            </li>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-center text-gray-500">No converted files available.</p>
+                    {% endif %}
+                </ul>
             </div>
-            <div class="mt-4">
-                    <input type="checkbox" name="use_ai" id="use_ai" class="rounded text-blue-500 focus:ring-2 focus:ring-blue-500">
-                    <label for="use_ai" class="text-gray-700 ml-2">Use AI for text correction</label>
-                </div>
-            <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mt-4 w-full">Convert to DOCX</button>
-        </form>
-
-
-        <div class="mt-8">
-            <h2 class="text-2xl font-bold mb-4 text-center">Last 5 Converted Files</h2>
-            <ul class="max-w-md mx-auto">
-                {% if converted_files %}
-                    {% for file in converted_files %}
-                        <li class="bg-white p-4 rounded-lg shadow-md mb-2">
-                            <a href="{{ url_for('download_file', filename=file) }}" class="text-blue-500 hover:underline">{{ file }}</a>
-                        </li>
-                    {% endfor %}
-                {% else %}
-                    <p class="text-center text-gray-500">No converted files available.</p>
-                {% endif %}
-            </ul>
         </div>
     </div>
 
