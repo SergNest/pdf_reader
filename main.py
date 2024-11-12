@@ -4,7 +4,6 @@ from typing import List, Tuple
 
 from flask import Flask, request, render_template, send_file, redirect, url_for, abort
 from werkzeug.utils import secure_filename
-from PyPDF2 import PdfReader
 from docx import Document
 import pytesseract
 from pdf2image import convert_from_path
@@ -26,6 +25,7 @@ client = OpenAI(
     api_key=os.getenv("YOUR_API_KEY", "api_key"),
 )
 
+
 # Перевірка розширення файлу
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -36,13 +36,6 @@ def limit_remote_addr():
     print(request.remote_addr)
     if request.remote_addr not in allowed_ips:
         abort(403)  # Доступ заборонено
-
-
-def extract_text_from_pdf(pdf_file: str) -> list[str]:
-    with open(pdf_file, 'rb') as pdf:
-        reader = PdfReader(pdf, strict=False)
-        pdf_text: list[str] = [page.extract_text() for page in reader.pages]
-        return pdf_text
 
 
 # Функція для конвертації PDF або зображення у DOCX
@@ -99,15 +92,12 @@ def index():
 
             output_filename = f"{os.path.splitext(filename)[0]}.docx"
             use_ai = request.form.get('use_ai') == 'on'  # Отримання значення checkbox
-            output_path = convert_to_docx(file_path, output_filename, use_ai=use_ai)  # Передача use_ai
-
-            # Відображення списку останніх конвертованих файлів
-            converted_files = get_last_converted_files()
-            return render_template('index.html', converted_files=converted_files)
+            convert_to_docx(file_path, output_filename, use_ai=use_ai)  # Передача use_ai
 
     # Якщо метод GET, або якщо файл не було завантажено
     converted_files = get_last_converted_files()
     return render_template('index.html', converted_files=converted_files)
+
 
 # Завантаження конвертованого файлу
 @app.route("/download/<filename>")
@@ -158,7 +148,7 @@ def correct_text_with_ai(text):
                 {"role": "system", "content": "Ви - помічник, який коригує текст."},
                 {"role": "user", "content": f"Correct the following text:\n\n{text}"}
             ],
-            max_tokens=100
+            max_tokens=1000
         )
         return response.choices[0].message.content.strip()  # Правильний доступ до content
     except openai.APIConnectionError as e:
