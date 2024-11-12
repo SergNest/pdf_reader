@@ -1,5 +1,8 @@
+import base64
 import os
 import re
+from datetime import datetime
+from io import BytesIO
 from typing import List, Tuple
 
 from flask import Flask, request, render_template, send_file, redirect, url_for, abort
@@ -21,7 +24,6 @@ allowed_ips = [ip.strip() for ip in os.getenv('MY_LIST', '').split(',') if ip.st
 ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg'}
 
 client = OpenAI(
-    # This is the default and can be omitted
     api_key=os.getenv("YOUR_API_KEY", "api_key"),
 )
 
@@ -38,20 +40,23 @@ def limit_remote_addr():
         abort(403)  # Доступ заборонено
 
 
-# Функція для конвертації PDF або зображення у DOCX
 def convert_to_docx(file_path, output_filename, use_ai=False):
     """
-    Конвертує PDF або зображення в DOCX, опціонально використовуючи AI для корекції тексту.
+    Converts a PDF or image file to a DOCX file.
 
-    Args:
-        file_path: Шлях до вхідного файлу.
-        output_filename: Назва вихідного DOCX файлу.
-        use_ai: Флаг, що вказує, чи використовувати AI для корекції тексту.
+    Parameters:
+    file_path (str): The path to the input file (PDF or image).
+    output_filename (str): The name of the output DOCX file.
+    use_ai (bool, optional): If True, uses OpenAI API to correct the extracted text. Defaults to False.
+
+    Returns:
+    str: The path to the output DOCX file.
     """
+    
     doc = Document()
     _, ext = os.path.splitext(file_path)
     custom_oem_psm_config = r'--oem 3 --psm 6'
-
+    
     if ext.lower() == '.pdf':
         images = convert_from_path(file_path)
         for i, image in enumerate(images):
@@ -77,29 +82,50 @@ def convert_to_docx(file_path, output_filename, use_ai=False):
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == 'POST':
-        if 'file' not in request.files:
-            return 'No file part'
+        # Перевіряємо, чи завантажено файл або вставлено зображення
+        file = request.files.get('file')
+        pasted_image = request.form.get('pasted_image')
 
-        file = request.files['file']
+        # Якщо є вставлене зображення
+        if pasted_image:
+            # Декодуємо зображення з формату Base64
+            image_data = base64.b64decode(pasted_image.split(',')[1])
+            image = Image.open(BytesIO(image_data))
 
-        if file.filename == '':
-            return 'No selected file'
+            # Зберігаємо зображення як тимчасовий файл
+            filename = "pasted_image.png"
 
-        if file and allowed_file(file.filename):
+            print(filename)
+
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            image.save(file_path)
+
+            # output_filename = "pasted_image.docx"
+
+            current_date = datetime.now().strftime("%d%H%M")
+            output_filename = f"pasted_image_{current_date}.docx"
+
+            use_ai = request.form.get('use_ai') == 'on'
+            convert_to_docx(file_path, output_filename, use_ai=use_ai)
+
+        # Якщо файл завантажений через форму
+        elif file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
             file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(file_path)
 
             output_filename = f"{os.path.splitext(filename)[0]}.docx"
-            use_ai = request.form.get('use_ai') == 'on'  # Отримання значення checkbox
-            convert_to_docx(file_path, output_filename, use_ai=use_ai)  # Передача use_ai
+            use_ai = request.form.get('use_ai') == 'on'
+            convert_to_docx(file_path, output_filename, use_ai=use_ai)
 
-    # Якщо метод GET, або якщо файл не було завантажено
+        else:
+            return 'No file or pasted image selected'
+
+    # Виводимо сторінку з останніми конвертованими файлами
     converted_files = get_last_converted_files()
     return render_template('index.html', converted_files=converted_files)
 
 
-# Завантаження конвертованого файлу
 @app.route("/download/<filename>")
 def download_file(filename):
     path = os.path.join(app.config['CONVERTED_FOLDER'], filename)
@@ -108,22 +134,22 @@ def download_file(filename):
 
 def get_last_converted_files(converted_folder: str = app.config['CONVERTED_FOLDER'], num_files: int = 5) -> List[str]:
     """
-    Повертає список останніх конвертованих файлів у заданій папці.
+    Retrieves the names of the last converted files in the specified converted folder.
 
-    Args:
-        converted_folder: Шлях до папки з конвертованими файлами.
-        num_files: Кількість останніх файлів для повернення (за замовчуванням 5).
+    Parameters:
+    - converted_folder (str): The path to the folder containing the converted files. Defaults to the value of the 'CONVERTED_FOLDER' configuration variable.
+    - num_files (int): The number of files to retrieve. Defaults to 5.
 
     Returns:
-        Список шляхів до останніх конвертованих файлів, відсортованих за часом модифікації.
-        Повертає порожній список, якщо папка не існує або немає файлів.
-    """
+    - List[str]: A list of the names of the last converted files, sorted by modification time in descending order.
 
+    This function retrieves the names of the last converted files in the specified converted folder. It uses os.scandir for better performance and retrieves the modification time of each file. The files are then sorted by modification time in descending order, and the first 'num_files' files are returned.
+    """
     if not os.path.exists(converted_folder):
         return []
 
     files_with_time: List[Tuple[str, float]] = []
-    for entry in os.scandir(converted_folder):  # Використовуємо os.scandir для кращої продуктивності
+    for entry in os.scandir(converted_folder):
         if entry.is_file():
             try:
                 mtime = entry.stat().st_mtime
@@ -135,25 +161,34 @@ def get_last_converted_files(converted_folder: str = app.config['CONVERTED_FOLDE
     # Сортуємо за часом модифікації, від найновіших до найстаріших
     files_with_time.sort(key=lambda x: x[1], reverse=True)
 
-    # Повертаємо список останніх файлів
     return [f[0] for f in files_with_time[:num_files]]
 
 
-def correct_text_with_ai(text):
-    """Коригує текст за допомогою OpenAI API."""
+def correct_text_with_ai(text: str) -> str:
+    """
+    Uses the OpenAI GPT-3.5 model to correct the extracted text.
+
+    Parameters:
+    text (str): The extracted text to be corrected.
+
+    Returns:
+    str: The corrected text.
+
+    This function sends a request to the OpenAI API using the GPT-3.5 model to correct the extracted text. It constructs a message containing the original text and sends it to the model. The model then generates a corrected version of the text, which is returned. If there is an error connecting to the OpenAI API, the original text is returned.
+    """
     try:
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",  # Модель, яку хочете використовувати
+            model="gpt-3.5-turbo",  
             messages=[
-                {"role": "system", "content": "Ви - помічник, який коригує текст."},
+                {"role": "system", "content": "You are a text corrector."},
                 {"role": "user", "content": f"Correct the following text:\n\n{text}"}
             ],
             max_tokens=1000
         )
-        return response.choices[0].message.content.strip()  # Правильний доступ до content
+        return response.choices[0].message.content.strip()  
     except openai.APIConnectionError as e:
-        print(f"Помилка OpenAI API: {e}")
-        return text  # Повертаємо оригінальний текст у разі помилки
+        print(f"OpenAI API Connection Error: {e}")
+        return text  
 
 
 if __name__ == '__main__':
