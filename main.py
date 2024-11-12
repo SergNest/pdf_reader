@@ -95,12 +95,8 @@ def index():
             # Зберігаємо зображення як тимчасовий файл
             filename = "pasted_image.png"
 
-            print(filename)
-
             file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             image.save(file_path)
-
-            # output_filename = "pasted_image.docx"
 
             current_date = datetime.now().strftime("%d%H%M")
             output_filename = f"pasted_image_{current_date}.docx"
