@@ -19,6 +19,7 @@ from openai import OpenAI
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = os.getenv("UPLOAD_FOLDER", "uploads")
 app.config['CONVERTED_FOLDER'] = os.getenv("CONVERTED_FOLDER", "converted_files")
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Обмеження на 16 MB
 
 allowed_ips = [ip.strip() for ip in os.getenv('MY_LIST', '').split(',') if ip.strip()]
 ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg'}
