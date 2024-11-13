@@ -100,7 +100,9 @@
             })
             .then(data => {
                 console.log("Image uploaded successfully.");
-                alert(`File created: ${data.filename}`); // Показуємо ім'я файлу
+                document.getElementById('paste_area').style.backgroundImage = 'none'; // Скидання фону
+                document.getElementById('paste_area').textContent = 'Click here and paste your screenshot'; // Відновлення тексту
+                 document.getElementById('use_ai').checked = false;
                 fetchLastFiles(); // Оновлюємо список файлів
             })
             .catch(error => {
