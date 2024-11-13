@@ -1,25 +1,28 @@
 import base64
+import logging
 import os
 import re
 from datetime import datetime
 from io import BytesIO
 from typing import List, Tuple
 
-from flask import Flask, request, render_template, send_file, redirect, url_for, abort
+from flask import Flask, request, render_template, send_file, redirect, url_for, abort, jsonify
 from werkzeug.utils import secure_filename
 from docx import Document
 import pytesseract
 from pdf2image import convert_from_path
 from dotenv import load_dotenv
-from PIL import Image
-
+from PIL import Image, ImageFilter
+from werkzeug.exceptions import RequestEntityTooLarge
 import openai
 from openai import OpenAI
 
+logging.basicConfig(level=logging.INFO)
+
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 1 MB
 app.config['UPLOAD_FOLDER'] = os.getenv("UPLOAD_FOLDER", "uploads")
 app.config['CONVERTED_FOLDER'] = os.getenv("CONVERTED_FOLDER", "converted_files")
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Обмеження на 16 MB
 
 allowed_ips = [ip.strip() for ip in os.getenv('MY_LIST', '').split(',') if ip.strip()]
 ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg'}
@@ -36,7 +39,6 @@ def allowed_file(filename):
 
 @app.before_request
 def limit_remote_addr():
-    print(request.remote_addr)
     if request.remote_addr not in allowed_ips:
         abort(403)  # Доступ заборонено
 
@@ -53,11 +55,11 @@ def convert_to_docx(file_path, output_filename, use_ai=False):
     Returns:
     str: The path to the output DOCX file.
     """
-    
+
     doc = Document()
     _, ext = os.path.splitext(file_path)
-    custom_oem_psm_config = r'--oem 3 --psm 6'
-    
+    custom_oem_psm_config = r'--oem 3 --psm 6 -l eng+best'
+
     if ext.lower() == '.pdf':
         images = convert_from_path(file_path)
         for i, image in enumerate(images):
@@ -69,7 +71,9 @@ def convert_to_docx(file_path, output_filename, use_ai=False):
 
     elif ext.lower() in {'.png', '.jpg', '.jpeg'}:
         image = Image.open(file_path)
-        text = pytesseract.image_to_string(image)
+        image = image.convert('L')  # Перетворення в градації сірого
+        image = image.filter(ImageFilter.SHARPEN)  # Застосування фільтра підвищення різкості
+        text = pytesseract.image_to_string(image, config=custom_oem_psm_config)
         text = re.sub(r'[^\x09\x0A\x0D\x20-\x7E\xA0-\uD7FF\uE000-\uFFFD]', '', text)
         if use_ai:
             text = correct_text_with_ai(text)
@@ -82,45 +86,67 @@ def convert_to_docx(file_path, output_filename, use_ai=False):
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    if request.method == 'POST':
-        # Перевіряємо, чи завантажено файл або вставлено зображення
-        file = request.files.get('file')
-        pasted_image = request.form.get('pasted_image')
+    try:
+        if request.method == 'POST':
 
-        # Якщо є вставлене зображення
-        if pasted_image:
-            # Декодуємо зображення з формату Base64
-            image_data = base64.b64decode(pasted_image.split(',')[1])
-            image = Image.open(BytesIO(image_data))
+            file = request.files.get('file')
+            pasted_image = request.form.get('pasted_image')
 
-            # Зберігаємо зображення як тимчасовий файл
-            filename = "pasted_image.png"
+            # Process pasted image
+            if pasted_image:
+                image_data = base64.b64decode(pasted_image.split(',')[1])
+                image = Image.open(BytesIO(image_data))
+                filename = "pasted_image.png"
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                image.save(file_path)
+                output_filename = f"pasted_image_{datetime.now().strftime('%d%H%M')}.docx"
+                use_ai = request.form.get('use_ai') == 'on'
+                convert_to_docx(file_path, output_filename, use_ai=use_ai)
 
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            image.save(file_path)
+            # Process uploaded file
+            elif file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                file.save(file_path)
+                output_filename = f"{os.path.splitext(filename)[0]}.docx"
+                use_ai = request.form.get('use_ai') == 'on'
+                convert_to_docx(file_path, output_filename, use_ai=use_ai)
 
-            current_date = datetime.now().strftime("%d%H%M")
-            output_filename = f"pasted_image_{current_date}.docx"
+            else:
+                return 'No file or pasted image selected'
 
-            use_ai = request.form.get('use_ai') == 'on'
-            convert_to_docx(file_path, output_filename, use_ai=use_ai)
+    except RequestEntityTooLarge as e:
+        app.logger.error(f"Request entity too large: {e}")
+        return "Request entity too large. Please try uploading a smaller file.", 413
 
-        # Якщо файл завантажений через форму
-        elif file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(file_path)
-
-            output_filename = f"{os.path.splitext(filename)[0]}.docx"
-            use_ai = request.form.get('use_ai') == 'on'
-            convert_to_docx(file_path, output_filename, use_ai=use_ai)
-
-        else:
-            return 'No file or pasted image selected'
-
-    # Виводимо сторінку з останніми конвертованими файлами
     converted_files = get_last_converted_files()
     return render_template('index.html', converted_files=converted_files)
+
+
+@app.route('/convert', methods=['POST'])
+def convert():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    # Генерація імені файлу
+    filename = "pasted_image1.png"
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+    # Збереження завантаженого файлу
+    file.save(file_path)
+
+    # Генерація імені вихідного файлу
+    output_filename = f"pasted_image_{datetime.now().strftime('%d%H%M')}.docx"
+    use_ai = request.form.get('use_ai') == 'true'
+
+    # Конвертація зображення в DOCX
+    convert_to_docx(file_path, output_filename, use_ai=use_ai)
+
+    return jsonify({'filename': output_filename}), 200
 
 
 @app.route("/download/<filename>")
@@ -128,6 +154,11 @@ def download_file(filename):
     path = os.path.join(app.config['CONVERTED_FOLDER'], filename)
     return send_file(path, as_attachment=True)
 
+
+@app.route('/last_files', methods=['GET'])
+def last_files():
+    files = get_last_converted_files()
+    return jsonify({'files': files})
 
 def get_last_converted_files(converted_folder: str = app.config['CONVERTED_FOLDER'], num_files: int = 5) -> List[str]:
     """
@@ -175,17 +206,17 @@ def correct_text_with_ai(text: str) -> str:
     """
     try:
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",  
+            model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a text corrector."},
                 {"role": "user", "content": f"Correct the following text:\n\n{text}"}
             ],
             max_tokens=1000
         )
-        return response.choices[0].message.content.strip()  
+        return response.choices[0].message.content.strip()
     except openai.APIConnectionError as e:
         print(f"OpenAI API Connection Error: {e}")
-        return text  
+        return text
 
 
 if __name__ == '__main__':

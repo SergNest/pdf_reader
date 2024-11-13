@@ -8,7 +8,7 @@
 </head>
 <body class="bg-gray-100 font-sans">
 
-     <div class="container mx-auto px-4 py-8">
+    <div class="container mx-auto px-4 py-8">
         <div class="flex flex-col md:flex-row justify-between">
             <div class="md:w-1/2">
                 <h1 class="text-3xl font-bold mb-4">Image/PDF to DOCX Converter</h1>
@@ -28,7 +28,8 @@
                     </div>
 
                     <div class="mt-4">
-                        <input type="checkbox" name="use_ai" id="use_ai" class="rounded text-blue-500 focus:ring-2 focus:ring-blue-500">
+                        <input type="checkbox" name="use_ai" id="use_ai"
+                               class="rounded text-blue-500 focus:ring-2 focus:ring-blue-500">
                         <label for="use_ai" class="text-gray-700 ml-2">Use AI for text correction</label>
                     </div>
 
@@ -38,7 +39,7 @@
 
             <div class="md:w-1/2 md:ml-4 mt-8 md:mt-0">
                 <h2 class="text-2xl font-bold mb-4">Last 5 Converted Files</h2>
-                <ul class="bg-white p-4 rounded-lg shadow-md">
+                <ul id="file_list" class="bg-white p-4 rounded-lg shadow-md">
                     {% if converted_files %}
                         {% for file in converted_files %}
                             <li class="mb-2">
@@ -58,25 +59,84 @@
         document.getElementById('paste_area').addEventListener('paste', function (event) {
             const items = (event.clipboardData || event.originalEvent.clipboardData).items;
             for (const item of items) {
-                if (item.type.indexOf("image") === 0) {
+                if (item.kind === "file" && item.type.indexOf("image") === 0) {
                     const blob = item.getAsFile();
+                    const imageSize = blob.size; // Розмір у байтах
+
+                    // Перевірка розміру зображення
+                    if (imageSize > 50 * 1024 * 1024) { // 50 MB
+                        alert('Image size exceeds the maximum limit of 50MB.');
+                        return;
+                    }
+
                     const reader = new FileReader();
                     reader.onload = function (event) {
                         document.getElementById('paste_area').style.backgroundImage = `url(${event.target.result})`;
                         document.getElementById('paste_area').textContent = ''; // Очистити текст
-                        document.getElementById('pasted_image').value = event.target.result; // Зберігаємо зображення як base64
+                        uploadImage(blob); // Викликаємо функцію для завантаження
                     };
                     reader.readAsDataURL(blob);
                 }
             }
         });
 
-        // При сабміті форми
+        function uploadImage(blob) {
+            const formData = new FormData();
+            formData.append("file", blob, "pasted_image.png"); // Додаємо файл у FormData
+
+            // Додаємо значення чекбокса
+            const useAiCheckbox = document.getElementById('use_ai');
+            formData.append("use_ai", useAiCheckbox.checked); // Додаємо стан чекбокса
+
+            fetch("/convert", {
+                method: "POST",
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json(); // Повертаємо JSON
+            })
+            .then(data => {
+                console.log("Image uploaded successfully.");
+                alert(`File created: ${data.filename}`); // Показуємо ім'я файлу
+                fetchLastFiles(); // Оновлюємо список файлів
+            })
+            .catch(error => {
+                console.error("Error uploading image:", error);
+            });
+        }
+
+        function fetchLastFiles() {
+            fetch('/last_files')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                const fileList = document.getElementById('file_list');
+                fileList.innerHTML = ''; // Очищаємо список перед оновленням
+                data.files.forEach(file => {
+                    const listItem = document.createElement('li');
+                    listItem.className = 'mb-2';
+                    listItem.innerHTML = `<a href="/download/${file}" class="text-blue-500 hover:underline">${file}</a>`;
+                    fileList.appendChild(listItem);
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching last files:', error);
+            });
+        }
+
+        // Додаємо обробник події для надсилання форми
         document.getElementById('convert_form').addEventListener('submit', function(event) {
-            const pastedImage = document.getElementById('pasted_image').value;
             const fileInput = document.getElementById('pdf_file');
 
-            if (!pastedImage && !fileInput.files.length) {
+            // Перевірка, чи є файли в input
+            if (!fileInput.files.length && !document.getElementById('pasted_image').value) {
                 event.preventDefault();
                 alert('Please select a file or paste a screenshot.');
             }
